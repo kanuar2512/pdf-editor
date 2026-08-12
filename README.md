@@ -46,6 +46,13 @@ The **Pages** panel is a page organiser:
 * **Delete** unwanted pages
 * **Extract** — tick some pages and save just those as a new PDF (split)
 
+Drag the divider between the panel and the page to widen it — the thumbnail grid
+reflows, so a wide panel shows several columns at once. Double-click the divider
+to snap it back.
+
+**Clear** in the toolbar closes everything and starts again, without reloading
+the page.
+
 Nothing is re-encoded while you work. The document is only rebuilt when you save,
 so reordering a 200-page merge is instant.
 

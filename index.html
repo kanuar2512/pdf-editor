@@ -43,20 +43,28 @@
   #props label{color:var(--muted); font-size:12.5px}
 
   #main{flex:1; display:flex; min-height:0}
-  #side{width:300px; flex:none; background:var(--panel); border-right:1px solid var(--line);
+  #side{width:300px; min-width:180px; flex:none; background:var(--panel);
     display:flex; flex-direction:column}
   #side.hide{display:none}
+  #sideGrip{flex:none; width:6px; cursor:col-resize; background:var(--line);
+    position:relative; transition:background .15s}
+  #sideGrip::after{content:""; position:absolute; top:50%; left:1px; width:4px; height:34px;
+    margin-top:-17px; border-radius:2px; background:#c2c9d1}
+  #sideGrip:hover, #sideGrip.on{background:var(--accent)}
+  #sideGrip:hover::after, #sideGrip.on::after{background:#fff}
+  #side.hide + #sideGrip{display:none}
+  body.resizing{cursor:col-resize; user-select:none}
   #tabs{display:flex; border-bottom:1px solid var(--line); flex:none}
   #tabs button{flex:1; border:0; border-radius:0; border-bottom:2px solid transparent;
     background:transparent; padding:9px 0; color:var(--muted); font-weight:600; font-size:13px}
   #tabs button.on{color:var(--accent); border-bottom-color:var(--accent); background:transparent}
-  .pane{display:none; overflow:auto; padding:12px; flex:1}
+  .pane{display:none; overflow-y:auto; overflow-x:hidden; padding:12px; flex:1}
   .pane.on{display:block}
   .hint{font-size:12.5px; color:var(--muted); margin:0 0 12px}
 
   /* --- page organiser --- */
   #pgTools{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px}
-  #thumbs{display:grid; grid-template-columns:1fr 1fr; gap:9px}
+  #thumbs{display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:9px}
   .thumb{position:relative; border:1px solid var(--line); border-radius:8px; background:#fff;
     padding:5px; cursor:grab; user-select:none}
   .thumb.sel{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) inset}
@@ -65,10 +73,11 @@
   .thumb.insR{box-shadow:3px 0 0 var(--accent)}
   .thumb canvas{display:block; width:100%; height:auto; background:#fff;
     border:1px solid #eceff3; border-radius:4px}
-  .thumb .cap{display:flex; align-items:center; gap:4px; margin-top:4px; font-size:11px; color:var(--muted)}
-  .thumb .cap .n{font-weight:700; color:var(--ink)}
+  .thumb .cap{display:flex; align-items:center; gap:4px; margin-top:4px; font-size:11px;
+    color:var(--muted); min-width:0}
+  .thumb .cap .n{font-weight:700; color:var(--ink); flex:none}
   .thumb .src{font-size:10px; color:var(--muted); overflow:hidden; text-overflow:ellipsis;
-    white-space:nowrap; flex:1}
+    white-space:nowrap; flex:1 1 0; min-width:0}
   .thumb .acts{position:absolute; top:7px; right:7px; display:none; gap:3px}
   .thumb:hover .acts{display:flex}
   .thumb .acts button{padding:1px 5px; font-size:11px; border-radius:4px; line-height:1.5}
@@ -85,7 +94,7 @@
     margin:14px 0 6px; font-weight:700}
   .grp:first-child{margin-top:0}
 
-  #viewWrap{flex:1; overflow:auto; padding:22px 0 60px; position:relative}
+  #viewWrap{flex:1; min-width:0; overflow:auto; padding:22px 0 60px; position:relative}
   #pages{display:flex; flex-direction:column; align-items:center; gap:18px}
   .page{position:relative; box-shadow:0 2px 10px rgba(20,30,50,.16); background:#fff}
   .page canvas{display:block}
@@ -146,6 +155,7 @@
 <div id="bar">
   <button id="bOpen" class="primary">Open PDF</button>
   <button id="bAdd" disabled title="Merge more PDFs into this document">+ Add PDF</button>
+  <button id="bClear" disabled title="Close everything and start again">Clear</button>
   <input type="file" id="fileIn" accept="application/pdf" multiple hidden>
   <span id="fname">No file</span>
 
@@ -211,6 +221,7 @@
       <div id="fieldList"></div>
     </div>
   </aside>
+  <div id="sideGrip" title="Drag to resize · double-click to reset"></div>
 
   <div id="viewWrap">
     <div id="pages"></div>
@@ -260,7 +271,7 @@ const { PDFDocument, StandardFonts, PDFName, PDFRef, PDFString, rgb, degrees } =
 const BASE = 0.847;        // Arial baseline, measured from the top of a line-height:1 box
 const LINE = 1.18;         // multi-line spacing
 const MIN_SCALE = 0.25, MAX_SCALE = 4;
-const THUMB_W = 118;
+const THUMB_W = 190;       // thumbnail backing-store width — stays sharp on a wide panel
 
 const S = {
   srcs: [],          // {id, name, bytes, doc, nPages, pageWidgets:[[w,…] per page]}
@@ -338,7 +349,7 @@ async function intake(files, replace) {
     for (const f of files) await addSource(f);
     $("#drop").style.display = S.order.length ? "none" : "";
     $("#side").classList.remove("hide");
-    $("#bSave").disabled = $("#bAdd").disabled = S.order.length === 0;
+    $("#bSave").disabled = $("#bAdd").disabled = $("#bClear").disabled = S.order.length === 0;
     buildFieldList(); refreshThumbs(); updateHeader();
     await relayout();
     const withForms = S.srcs.filter(s => s.pageWidgets.some(a => a.length)).length;
@@ -350,9 +361,28 @@ async function intake(files, replace) {
 }
 
 function reset() {
-  S.srcs = []; S.order = []; S.items = []; S.fields = new Map(); S.sel = null;
-  $("#pages").innerHTML = ""; $("#thumbs").innerHTML = ""; showProps(null);
+  io.disconnect();                                   // drop references to the old DOM
+  for (const s of S.srcs) { try { s.doc.destroy(); } catch (e) { } }
+  S.srcs = []; S.order = []; S.items = []; S.fields = new Map();
+  S.sel = null; S.pending = null;
+  $("#pages").innerHTML = ""; $("#thumbs").innerHTML = ""; $("#fieldList").innerHTML = "";
+  showProps(null);
 }
+
+$("#bClear").onclick = () => {
+  if (!S.order.length) return;
+  const dirty = S.items.length || [...S.fields.values()].some(f => f.value);
+  if (dirty && !confirm("Clear everything and start again?\n\nUnsaved changes will be lost.")) return;
+  reset();
+  setTool("select");
+  $("#drop").style.display = "";
+  $("#side").classList.add("hide");
+  $("#bSave").disabled = $("#bAdd").disabled = $("#bClear").disabled = true;
+  $("#fieldHint").textContent = $("#pgHint").textContent = "No PDF loaded.";
+  $("#zoomLabel").textContent = Math.round(S.scale * 100) + "%";
+  updateHeader();
+  toast("Cleared.");
+};
 
 async function addSource(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -737,6 +767,26 @@ document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => {
   document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === b.dataset.pane));
 });
 $("#bSide").onclick = () => $("#side").classList.toggle("hide");
+
+/* drag the divider to widen the panel — handy when you have a lot of pages */
+const grip = $("#sideGrip"), side = $("#side");
+grip.addEventListener("mousedown", ev => {
+  ev.preventDefault();
+  const x0 = ev.clientX, w0 = side.getBoundingClientRect().width;
+  grip.classList.add("on"); document.body.classList.add("resizing");
+  const move = m => {
+    side.style.width =
+      Math.max(180, Math.min(window.innerWidth - 300, w0 + m.clientX - x0)) + "px";
+  };
+  const up = () => {
+    document.removeEventListener("mousemove", move);
+    document.removeEventListener("mouseup", up);
+    grip.classList.remove("on"); document.body.classList.remove("resizing");
+  };
+  document.addEventListener("mousemove", move);
+  document.addEventListener("mouseup", up);
+});
+grip.addEventListener("dblclick", () => side.style.width = "300px");
 
 function buildFieldList() {
   const list = $("#fieldList"); list.innerHTML = "";
