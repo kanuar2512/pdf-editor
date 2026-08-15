@@ -5,105 +5,243 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PDF Editor — fill, annotate, merge</title>
 <meta name="description" content="A browser-based PDF editor: fill forms, annotate flat PDFs, merge, reorder, rotate and split pages. Runs entirely on your own machine.">
+<meta name="theme-color" content="#ffffff">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <style>
   :root{
-    --bg:#f1f3f5; --panel:#fff; --line:#dbe0e6; --ink:#1f2933; --muted:#69737d;
-    --accent:#2563eb; --danger:#dc2626;
+    --chrome:#ffffff;
+    --toolbar:#fbfcfd;
+    --panel:#ffffff;
+    --workspace:#464c55;
+    --line:#e4e8ed;
+    --line-2:#d5dbe3;
+    --ink:#161c24;
+    --muted:#5f6b7a;
+    --muted-2:#8a94a2;
+    --accent:#2563eb;
+    --accent-hi:#1d4ed8;
+    --accent-soft:#e8effd;
+    --accent-line:#bed0fa;
+    --danger:#d93025;
+    --danger-soft:#fdeceb;
+    --r:8px;
+    --shadow-1:0 1px 2px rgba(16,24,40,.05);
+    --shadow-2:0 4px 14px rgba(16,24,40,.09);
+    --shadow-3:0 18px 48px rgba(16,24,40,.22);
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{
-    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-    color:var(--ink); background:var(--bg); display:flex; flex-direction:column; overflow:hidden;
+    font:14px/1.45 "Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--ink); background:var(--workspace);
+    display:flex; flex-direction:column; overflow:hidden;
+    -webkit-font-smoothing:antialiased;
   }
   button,select,input,textarea{font:inherit; color:inherit}
-  button{background:#fff; border:1px solid var(--line); border-radius:7px; padding:6px 11px;
-    cursor:pointer; white-space:nowrap}
-  button:hover:not(:disabled){background:#f5f7fa; border-color:#c2c9d1}
-  button:disabled{opacity:.45; cursor:default}
-  button.on{background:var(--accent); border-color:var(--accent); color:#fff}
+  :focus{outline:none}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  .ic{width:17px; height:17px; flex:none; fill:none; stroke:currentColor;
+      stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round}
+  .ic.sm{width:15px; height:15px}
+
+  /* ---------- generic buttons (modals, side panel) ---------- */
+  button{
+    display:inline-flex; align-items:center; gap:7px; justify-content:center;
+    background:#fff; border:1px solid var(--line-2); border-radius:var(--r);
+    padding:0 12px; height:34px; cursor:pointer; white-space:nowrap;
+    font-weight:500; box-shadow:var(--shadow-1); transition:background .12s,border-color .12s,color .12s;
+  }
+  button:hover:not(:disabled){background:#f4f6f9; border-color:#c3cbd6}
+  button:active:not(:disabled){background:#e9edf3}
+  button:disabled{opacity:.4; cursor:default; box-shadow:none}
   button.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
-  button.primary:hover:not(:disabled){background:#1d4ed8}
-  button.mini{padding:3px 7px; font-size:12px; border-radius:5px}
+  button.primary:hover:not(:disabled){background:var(--accent-hi); border-color:var(--accent-hi)}
+  button.primary:active:not(:disabled){background:#1b45b8}
+  button.mini{height:28px; padding:0 9px; font-size:12.5px; border-radius:6px; gap:5px}
 
-  #bar{display:flex; align-items:center; gap:7px; padding:8px 12px; background:var(--panel);
-    border-bottom:1px solid var(--line); flex-wrap:wrap; flex:none; z-index:30}
-  .sep{width:1px; height:24px; background:var(--line); margin:0 3px}
-  .spacer{flex:1}
-  #fname{font-size:12.5px; color:var(--muted); max-width:210px; overflow:hidden;
-    text-overflow:ellipsis; white-space:nowrap}
-  #zoomLabel{min-width:48px; text-align:center; font-variant-numeric:tabular-nums; color:var(--muted)}
-  .chk{display:flex; align-items:center; gap:5px; font-size:12.5px; color:var(--muted); cursor:pointer}
+  /* ---------- app header ---------- */
+  #app{
+    flex:none; display:flex; align-items:center; gap:14px; height:52px; padding:0 14px;
+    background:var(--chrome); border-bottom:1px solid var(--line); z-index:40;
+  }
+  #brand{display:flex; align-items:center; gap:9px; flex:none}
+  #brand .mark{
+    width:28px; height:28px; border-radius:7px; background:var(--accent);
+    display:flex; align-items:center; justify-content:center; color:#fff; flex:none;
+    box-shadow:0 2px 6px rgba(37,99,235,.32);
+  }
+  #brandName{font-size:15px; font-weight:650; letter-spacing:-.01em}
+  #brandName small{display:block; font-size:10.5px; font-weight:500; color:var(--muted-2);
+    letter-spacing:.02em; margin-top:-2px}
 
-  #props{display:none; align-items:center; gap:8px; padding:6px 12px; background:#fffdf3;
-    border-bottom:1px solid #f0e6c8; flex:none; font-size:13px}
+  #docBar{flex:1; display:flex; justify-content:center; min-width:0}
+  #fname{
+    display:inline-flex; align-items:center; gap:7px; max-width:100%;
+    padding:5px 12px; border-radius:99px; background:#f4f6f9; border:1px solid var(--line);
+    font-size:12.5px; color:var(--muted); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;
+  }
+  #headActions{display:flex; align-items:center; gap:8px; flex:none}
+  #privacy{display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--muted-2);
+    padding-right:4px}
+
+  /* ---------- toolbar ---------- */
+  #bar{
+    flex:none; display:flex; align-items:center; gap:2px; height:48px; padding:0 10px;
+    background:var(--toolbar); border-bottom:1px solid var(--line);
+    overflow-x:auto; overflow-y:hidden; scrollbar-width:none; z-index:30;
+  }
+  #bar::-webkit-scrollbar{height:0}
+  .tgrp{display:flex; align-items:center; gap:2px; flex:none}
+  .sep{width:1px; height:22px; background:var(--line-2); margin:0 8px; flex:none}
+  .spacer{flex:1; min-width:8px}
+
+  button.tb{
+    background:transparent; border-color:transparent; box-shadow:none; height:34px;
+    padding:0 10px; color:var(--ink); font-weight:500;
+  }
+  button.tb:hover:not(:disabled){background:#eaeef4; border-color:transparent}
+  button.tb:active:not(:disabled){background:#dfe5ee}
+  button.tb.icon{width:34px; padding:0}
+  button.tb.on{background:var(--accent-soft); color:var(--accent-hi); font-weight:600}
+  button.tb.on:hover{background:#dde8fc}
+  button.tint{background:var(--accent-soft); color:var(--accent-hi); font-weight:600}
+  button.tint:hover:not(:disabled){background:#dbe6fc}
+  button.tb.danger:hover:not(:disabled){background:var(--danger-soft); color:var(--danger)}
+  body:has(#side:not(.hide)) #bSide{background:var(--accent-soft); color:var(--accent-hi)}
+
+  #zoomLabel{
+    min-width:56px; text-align:center; font-size:12.5px; font-weight:600;
+    font-variant-numeric:tabular-nums; color:var(--muted); user-select:none;
+  }
+
+  /* switch-style option toggles */
+  .tgl{position:relative; display:inline-flex; align-items:center; gap:8px; height:34px;
+    padding:0 10px; border-radius:var(--r); cursor:pointer; font-size:13px; color:var(--muted);
+    white-space:nowrap; transition:background .12s}
+  .tgl:hover{background:#eaeef4}
+  .tgl input{position:absolute; opacity:0; width:0; height:0}
+  .tgl .sw{width:30px; height:17px; border-radius:99px; background:#cfd6e0; flex:none;
+    position:relative; transition:background .16s}
+  .tgl .sw::after{content:""; position:absolute; top:2px; left:2px; width:13px; height:13px;
+    border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); transition:transform .16s}
+  .tgl > .ic{color:var(--muted-2); transition:color .12s}
+  .tgl input:checked ~ .sw{background:var(--accent)}
+  .tgl:has(input:checked) > .ic{color:var(--accent)}
+  .tgl input:checked + .sw::after{transform:translateX(13px)}
+  .tgl input:checked ~ .lbl-opt{color:var(--ink); font-weight:600}
+  .tgl input:focus-visible + .sw{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ---------- properties / inspector strip ---------- */
+  #props{
+    display:none; align-items:center; gap:10px; flex:none; height:44px; padding:0 14px;
+    background:#fff; border-bottom:1px solid var(--line); font-size:13px; z-index:25;
+    box-shadow:var(--shadow-1);
+  }
   #props.show{display:flex}
   #props label{color:var(--muted); font-size:12.5px}
+  #pTitle{display:inline-flex; align-items:center; gap:7px; font-weight:600}
+  #pTitle::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--accent)}
+  #pSize{width:66px; height:30px; border:1px solid var(--line-2); border-radius:6px; padding:0 8px}
+  #pColor{width:34px; height:30px; padding:2px; border:1px solid var(--line-2);
+    border-radius:6px; background:#fff; cursor:pointer}
+  #props button{height:30px; font-size:12.5px}
+  #propsHint{font-size:12px; color:var(--muted-2)}
 
-  #main{flex:1; display:flex; min-height:0}
-  #side{width:300px; min-width:180px; flex:none; background:var(--panel);
-    display:flex; flex-direction:column}
+  /* ---------- layout ---------- */
+  #main{flex:1; display:flex; min-height:0; position:relative}
+
+  #side{width:300px; min-width:190px; flex:none; background:var(--panel);
+    display:flex; flex-direction:column; z-index:20}
   #side.hide{display:none}
-  #sideGrip{flex:none; width:6px; cursor:col-resize; background:var(--line);
+  #sideGrip{flex:none; width:7px; cursor:col-resize; background:var(--line);
     position:relative; transition:background .15s}
-  #sideGrip::after{content:""; position:absolute; top:50%; left:1px; width:4px; height:34px;
-    margin-top:-17px; border-radius:2px; background:#c2c9d1}
+  #sideGrip::after{content:""; position:absolute; top:50%; left:2px; width:3px; height:32px;
+    margin-top:-16px; border-radius:2px; background:#c3cbd6; transition:background .15s}
   #sideGrip:hover, #sideGrip.on{background:var(--accent)}
   #sideGrip:hover::after, #sideGrip.on::after{background:#fff}
   #side.hide + #sideGrip{display:none}
   body.resizing{cursor:col-resize; user-select:none}
-  #tabs{display:flex; border-bottom:1px solid var(--line); flex:none}
-  #tabs button{flex:1; border:0; border-radius:0; border-bottom:2px solid transparent;
-    background:transparent; padding:9px 0; color:var(--muted); font-weight:600; font-size:13px}
-  #tabs button.on{color:var(--accent); border-bottom-color:var(--accent); background:transparent}
+
+  #tabs{display:flex; flex:none; padding:8px 8px 0; gap:4px; border-bottom:1px solid var(--line)}
+  #tabs button{
+    flex:1; height:34px; border:0; box-shadow:none; background:transparent; border-radius:7px 7px 0 0;
+    color:var(--muted); font-weight:600; font-size:13px; gap:6px; position:relative;
+  }
+  #tabs button:hover{background:#f2f5f9}
+  #tabs button.on{color:var(--accent-hi); background:var(--accent-soft)}
+  #tabs button.on::after{content:""; position:absolute; left:8px; right:8px; bottom:-1px;
+    height:2px; background:var(--accent); border-radius:2px 2px 0 0}
+
   .pane{display:none; overflow-y:auto; overflow-x:hidden; padding:12px; flex:1}
   .pane.on{display:block}
-  .hint{font-size:12.5px; color:var(--muted); margin:0 0 12px}
+  .hint{font-size:12.5px; color:var(--muted); margin:0 0 12px; line-height:1.5}
 
-  /* --- page organiser --- */
-  #pgTools{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px}
-  #thumbs{display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:9px}
-  .thumb{position:relative; border:1px solid var(--line); border-radius:8px; background:#fff;
-    padding:5px; cursor:grab; user-select:none}
-  .thumb.sel{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) inset}
+  /* ---------- page organiser ---------- */
+  #pgTools{display:flex; flex-wrap:wrap; gap:5px; margin-bottom:12px}
+  #thumbs{display:grid; grid-template-columns:repeat(auto-fill,minmax(108px,1fr)); gap:10px}
+  .thumb{position:relative; border:1px solid var(--line-2); border-radius:9px; background:#fff;
+    padding:6px; cursor:grab; user-select:none; transition:border-color .12s, box-shadow .12s}
+  .thumb:hover{border-color:#b9c3d1; box-shadow:var(--shadow-2)}
+  .thumb.sel{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-line)}
   .thumb.drag{opacity:.35}
   .thumb.insL{box-shadow:-3px 0 0 var(--accent)}
   .thumb.insR{box-shadow:3px 0 0 var(--accent)}
   .thumb canvas{display:block; width:100%; height:auto; background:#fff;
-    border:1px solid #eceff3; border-radius:4px}
-  .thumb .cap{display:flex; align-items:center; gap:4px; margin-top:4px; font-size:11px;
+    border:1px solid var(--line); border-radius:5px}
+  .thumb .cap{display:flex; align-items:center; gap:5px; margin-top:6px; font-size:11px;
     color:var(--muted); min-width:0}
-  .thumb .cap .n{font-weight:700; color:var(--ink); flex:none}
-  .thumb .src{font-size:10px; color:var(--muted); overflow:hidden; text-overflow:ellipsis;
+  .thumb .cap .n{font-weight:700; color:var(--ink); flex:none;
+    background:#eef1f6; border-radius:5px; padding:1px 6px; font-size:10.5px}
+  .thumb .src{font-size:10px; color:var(--muted-2); overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap; flex:1 1 0; min-width:0}
-  .thumb .acts{position:absolute; top:7px; right:7px; display:none; gap:3px}
-  .thumb:hover .acts{display:flex}
-  .thumb .acts button{padding:1px 5px; font-size:11px; border-radius:4px; line-height:1.5}
-  .thumb input[type=checkbox]{position:absolute; top:8px; left:8px; margin:0}
+  .thumb .acts{position:absolute; top:9px; right:9px; display:none; gap:3px}
+  .thumb:hover .acts, .thumb.sel .acts{display:flex}
+  .thumb .acts button{height:24px; min-width:24px; padding:0 5px; font-size:11px;
+    border-radius:6px; background:rgba(255,255,255,.96); box-shadow:var(--shadow-2)}
+  .thumb input[type=checkbox]{position:absolute; top:10px; left:10px; margin:0;
+    width:15px; height:15px; accent-color:var(--accent); cursor:pointer}
 
-  /* --- field list --- */
-  .frow{border:1px solid var(--line); border-radius:8px; padding:7px 9px; margin-bottom:7px}
-  .frow.active{border-color:var(--accent); background:#f8faff}
-  .frow .fn{font-size:11.5px; color:var(--muted); word-break:break-all; margin-bottom:4px}
-  .frow input[type=text],.frow textarea,.frow select{width:100%; border:1px solid var(--line);
-    border-radius:5px; padding:4px 6px; font-size:13px}
-  .frow textarea{resize:vertical; min-height:46px}
-  .grp{font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
-    margin:14px 0 6px; font-weight:700}
+  /* ---------- field list ---------- */
+  .frow{border:1px solid var(--line); border-radius:9px; padding:9px 10px; margin-bottom:8px;
+    background:#fff; transition:border-color .12s, background .12s}
+  .frow:hover{border-color:var(--line-2)}
+  .frow.active{border-color:var(--accent); background:#f7faff; box-shadow:0 0 0 2px var(--accent-soft)}
+  .frow .fn{font-size:11px; color:var(--muted-2); word-break:break-all; margin-bottom:5px;
+    font-weight:600; letter-spacing:.01em}
+  .frow input[type=text],.frow textarea,.frow select{width:100%; border:1px solid var(--line-2);
+    border-radius:6px; padding:6px 8px; font-size:13px; background:#fff}
+  .frow input[type=text]:focus,.frow textarea:focus,.frow select:focus{
+    border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
+  .frow textarea{resize:vertical; min-height:48px}
+  .frow input[type=checkbox]{accent-color:var(--accent); width:15px; height:15px}
+  .grp{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted-2);
+    margin:16px 0 7px; font-weight:700}
   .grp:first-child{margin-top:0}
 
-  #viewWrap{flex:1; min-width:0; overflow:auto; padding:22px 0 60px; position:relative}
-  #pages{display:flex; flex-direction:column; align-items:center; gap:18px}
-  .page{position:relative; box-shadow:0 2px 10px rgba(20,30,50,.16); background:#fff}
-  .page canvas{display:block}
-  .pagenum{position:absolute; top:-17px; left:0; font-size:11px; color:var(--muted)}
+  /* ---------- document workspace ---------- */
+  #viewWrap{flex:1; min-width:0; overflow:auto; padding:26px 0 70px; position:relative;
+    background:var(--workspace)}
+  #viewWrap::-webkit-scrollbar{width:14px; height:14px}
+  #viewWrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22); border-radius:8px;
+    border:4px solid transparent; background-clip:padding-box}
+  #viewWrap::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.34); background-clip:padding-box}
+  #pages{display:flex; flex-direction:column; align-items:center; gap:24px}
+  .page{position:relative; background:#fff; border-radius:2px;
+    box-shadow:0 2px 6px rgba(0,0,0,.3), 0 12px 28px rgba(0,0,0,.22)}
+  .page canvas{display:block; border-radius:2px}
+  .pagenum{position:absolute; top:-20px; left:0; font-size:11px; font-weight:500;
+    color:rgba(255,255,255,.62); letter-spacing:.02em}
   .layer{position:absolute; inset:0; overflow:hidden}
 
+  /* form widgets */
   .fld{position:absolute; margin:0; font-family:Arial,Helvetica,sans-serif;
-    border:1px solid transparent; background:transparent; padding:0 2px; color:#0b1b34}
-  body.hl .fld{background:rgba(37,99,235,.10); border-color:rgba(37,99,235,.45)}
+    border:1px solid transparent; background:transparent; padding:0 2px; color:#0b1b34;
+    border-radius:2px}
+  body.hl .fld{background:rgba(37,99,235,.10); border-color:rgba(37,99,235,.42)}
+  .fld:hover:not(:disabled){background:rgba(37,99,235,.16)}
   .fld:focus{outline:2px solid var(--accent); background:#fff}
   textarea.fld{resize:none; line-height:1.15}
   .fld.cb{appearance:none; -webkit-appearance:none; cursor:pointer; display:flex;
@@ -112,111 +250,291 @@
   body.hl .fld.cb{background:rgba(37,99,235,.12)}
   .fld.ro{background:rgba(120,120,120,.12); cursor:not-allowed}
 
-  .item{position:absolute; cursor:move; border:1px dashed transparent}
-  .item:hover{border-color:rgba(37,99,235,.5)}
-  .item.sel{border-color:var(--accent); border-style:solid}
+  /* annotations */
+  .item{position:absolute; cursor:move; border:1px dashed transparent; border-radius:2px}
+  .item:hover{border-color:rgba(37,99,235,.55)}
+  .item.sel{border-color:var(--accent); border-style:solid; box-shadow:0 0 0 2px rgba(37,99,235,.18)}
   .item.txt{font-family:Arial,Helvetica,sans-serif; line-height:1; white-space:pre;
     padding:0; min-width:6px; outline:none}
-  .item.txt[contenteditable=true]:focus{cursor:text; background:rgba(255,255,255,.75)}
+  .item.txt[contenteditable=true]:focus{cursor:text; background:rgba(255,255,255,.8)}
   .item.stamp svg{display:block; width:100%; height:100%; pointer-events:none}
   .item.img img{display:block; width:100%; height:100%; pointer-events:none}
   .item.white{background:#fff}
-  .grip{position:absolute; right:-5px; bottom:-5px; width:11px; height:11px; background:#fff;
-    border:2px solid var(--accent); border-radius:3px; cursor:nwse-resize; display:none}
+  .grip{position:absolute; right:-6px; bottom:-6px; width:12px; height:12px; background:#fff;
+    border:2px solid var(--accent); border-radius:3px; cursor:nwse-resize; display:none;
+    box-shadow:0 1px 3px rgba(0,0,0,.3)}
   .item.sel .grip{display:block}
 
+  /* ---------- empty state ---------- */
   #drop{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    flex-direction:column; gap:10px; color:var(--muted); pointer-events:none; text-align:center}
-  #drop b{font-size:17px; color:var(--ink)}
-  body.dragging #viewWrap{outline:3px dashed var(--accent); outline-offset:-10px}
+    pointer-events:none; padding:24px}
+  .empty{text-align:center; max-width:430px; color:rgba(255,255,255,.72)}
+  .empty .art{
+    width:96px; height:96px; margin:0 auto 22px; border-radius:22px;
+    border:2px dashed rgba(255,255,255,.28); display:flex; align-items:center; justify-content:center;
+    color:rgba(255,255,255,.62); background:rgba(255,255,255,.045);
+  }
+  .empty .art .ic{width:40px; height:40px; stroke-width:1.3}
+  .empty h1{margin:0 0 8px; font-size:20px; font-weight:650; color:#fff; letter-spacing:-.01em}
+  .empty p{margin:0 0 20px; font-size:13.5px; line-height:1.6}
+  .empty .cta{pointer-events:auto; display:inline-flex}
+  .empty .cta button{height:38px; padding:0 18px; font-size:14px}
+  .chips{display:flex; flex-wrap:wrap; gap:7px; justify-content:center; margin-top:26px}
+  .chips span{font-size:11.5px; padding:4px 11px; border-radius:99px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14);
+    color:rgba(255,255,255,.66)}
 
-  .modal{position:fixed; inset:0; background:rgba(15,23,42,.5); display:none;
-    align-items:center; justify-content:center; z-index:100}
+  /* ---------- drag & drop feedback ---------- */
+  #dz{position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(37,99,235,.22); backdrop-filter:blur(1.5px); z-index:15; pointer-events:none}
+  body.dragging #dz{display:flex}
+  #dz .box{
+    padding:30px 42px; border-radius:16px; border:2.5px dashed #fff; color:#fff;
+    background:rgba(20,32,60,.55); text-align:center; box-shadow:var(--shadow-3);
+    animation:pop .18s ease-out;
+  }
+  #dz .box .ic{width:34px; height:34px; margin-bottom:10px}
+  #dz .box b{display:block; font-size:17px; font-weight:650}
+  #dz .box span{font-size:12.5px; opacity:.8}
+  @keyframes pop{from{transform:scale(.96); opacity:0} to{transform:scale(1); opacity:1}}
+
+  /* ---------- modal ---------- */
+  .modal{position:fixed; inset:0; background:rgba(15,23,42,.55); display:none;
+    align-items:center; justify-content:center; z-index:100; backdrop-filter:blur(2px)}
   .modal.show{display:flex}
-  .card{background:#fff; border-radius:12px; padding:18px; width:min(560px,92vw);
-    box-shadow:0 18px 50px rgba(0,0,0,.3)}
-  .card h2{margin:0 0 4px; font-size:16px}
-  .card p{margin:0 0 12px; font-size:13px; color:var(--muted)}
-  #sigPad{border:1px dashed var(--line); border-radius:8px; width:100%; height:190px;
-    touch-action:none; background:#fff; cursor:crosshair}
-  .rowend{display:flex; gap:8px; justify-content:flex-end; margin-top:12px}
+  .card{background:#fff; border-radius:14px; padding:22px; width:min(560px,92vw);
+    box-shadow:var(--shadow-3); animation:pop .18s ease-out}
+  .card h2{margin:0 0 5px; font-size:17px; font-weight:650}
+  .card p{margin:0 0 14px; font-size:13px; color:var(--muted); line-height:1.55}
+  #sigPad{border:2px dashed var(--line-2); border-radius:10px; width:100%; height:190px;
+    touch-action:none; background:#fcfdfe; cursor:crosshair}
+  .rowend{display:flex; gap:8px; justify-content:flex-end; margin-top:14px}
 
-  #toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
-    background:#111827; color:#fff; padding:10px 16px; border-radius:8px; font-size:13px;
-    opacity:0; transition:.22s; pointer-events:none; z-index:200; max-width:70vw}
+  /* ---------- toast / busy ---------- */
+  #toast{position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(20px);
+    background:#111827; color:#fff; padding:11px 18px; border-radius:10px; font-size:13px;
+    opacity:0; transition:.22s; pointer-events:none; z-index:200; max-width:min(70vw,560px);
+    box-shadow:var(--shadow-3); line-height:1.5}
   #toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
-  #busy{position:fixed; inset:0; background:rgba(255,255,255,.65); display:none;
-    align-items:center; justify-content:center; z-index:150; font-weight:600}
+  #busy{position:fixed; inset:0; background:rgba(255,255,255,.7); display:none;
+    align-items:center; justify-content:center; z-index:150; backdrop-filter:blur(2px)}
   #busy.show{display:flex}
+  #busy span{display:inline-flex; align-items:center; gap:11px; background:#fff;
+    padding:14px 22px; border-radius:12px; box-shadow:var(--shadow-3); font-weight:600;
+    border:1px solid var(--line)}
+  #busy span::before{content:""; width:16px; height:16px; border-radius:50%;
+    border:2.5px solid var(--accent-line); border-top-color:var(--accent);
+    animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:1240px){ .lbl-opt{display:none} .tgl{padding:0 8px; gap:6px} }
+  @media (max-width:1040px){ .lbl{display:none} button.tb{padding:0 9px} }
+  @media (max-width:880px){
+    #side{position:absolute; top:0; bottom:0; left:0; box-shadow:var(--shadow-3)}
+    #sideGrip{display:none}
+    #privacy{display:none}
+  }
+  @media (max-width:660px){
+    #app{height:48px; padding:0 10px; gap:10px}
+    #brandName{display:none}
+    #docBar{justify-content:flex-start}
+    #fname{max-width:150px}
+    .empty .art{width:78px; height:78px; margin-bottom:16px}
+    .empty h1{font-size:17px}
+    .chips{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){ *{animation:none !important; transition:none !important} }
 </style>
 </head>
 <body>
 
-<div id="bar">
-  <button id="bOpen" class="primary">Open PDF</button>
-  <button id="bAdd" disabled title="Merge more PDFs into this document">+ Add PDF</button>
-  <button id="bClear" disabled title="Close everything and start again">Clear</button>
-  <input type="file" id="fileIn" accept="application/pdf" multiple hidden>
-  <span id="fname">No file</span>
+<!-- icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-open" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.6.8l1 1.2H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-add" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11.5v5M9.5 14h5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9.5 7V5.4A1.4 1.4 0 0 1 10.9 4h2.2a1.4 1.4 0 0 1 1.4 1.4V7"/><path d="M6.5 7l.9 12.1a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></symbol>
+  <symbol id="i-zoomout" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6"/><path d="M7.5 10.5h6"/></symbol>
+  <symbol id="i-zoomin" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6"/><path d="M7.5 10.5h6M10.5 7.5v6"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 5v14M20 5v14"/><path d="M8 12h8"/><path d="M11 9l-3 3 3 3M13 9l3 3-3 3"/></symbol>
+  <symbol id="i-cursor" viewBox="0 0 24 24"><path d="M5 3l14.5 7.4-6.3 1.6-2 6.6z"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6.5V4.5h14v2"/><path d="M12 4.5v15"/><path d="M9 19.5h6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5l5 5 10-11"/></symbol>
+  <symbol id="i-cross" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-erase" viewBox="0 0 24 24"><path d="M7.5 20.5H21"/><path d="M15.2 4.6l4.2 4.2a1.5 1.5 0 0 1 0 2.1l-8 8a1.5 1.5 0 0 1-2.1 0l-4.2-4.2a1.5 1.5 0 0 1 0-2.1l8-8a1.5 1.5 0 0 1 2.1 0z"/><path d="M11 8.5l4.5 4.5"/></symbol>
+  <symbol id="i-sign" viewBox="0 0 24 24"><path d="M3 20.5h18"/><path d="M3.5 16.5c2.5-8.5 4.6-11 6.2-11 1.3 0 1.4 1.8.5 4.6-.9 2.8-1 4.4 0 4.4 1.2 0 2.3-2.6 3.6-2.6 1 0 1 1.4 1.9 1.4.8 0 1.6-.8 2.8-2.6"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.2"/><circle cx="8.7" cy="9.6" r="1.5"/><path d="M3.7 16.6l4.1-4.1a2 2 0 0 1 2.8 0l3.6 3.6"/><path d="M13.6 15l1.9-1.9a2 2 0 0 1 2.8 0l2.1 2.1"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="10" rx="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.7 4.5v15"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4.5 19.5h15"/></symbol>
+  <symbol id="i-rotl" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.9-6.4"/><path d="M3.5 4v4.2h4.2"/></symbol>
+  <symbol id="i-rotr" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.9-6.4"/><path d="M20.5 4v4.2h-4.2"/></symbol>
+  <symbol id="i-selall" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2.4"/><path d="M8.4 12.2l2.6 2.6 4.6-5.4"/></symbol>
+  <symbol id="i-selnone" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2.4"/></symbol>
+  <symbol id="i-extract" viewBox="0 0 24 24"><path d="M13.5 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6"/><path d="M13.5 3.5V8h4.5"/><path d="M14 14h7"/><path d="M18.2 11.2L21 14l-2.8 2.8"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-3 8.2-7 9.5-4-1.3-7-5.1-7-9.5V6z"/><path d="M9.2 12.2l2 2 3.6-4"/></symbol>
+  <symbol id="i-pages" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.4"/></symbol>
+  <symbol id="i-fields" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="5" rx="1.6"/><rect x="3.5" y="14" width="11" height="5" rx="1.6"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 19V8"/><path d="M7.5 12.5L12 8l4.5 4.5"/><path d="M4.5 20.5h15"/></symbol>
+</svg>
+
+<!-- ============================== app header ============================== -->
+<header id="app">
+  <div id="brand">
+    <span class="mark"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg></span>
+    <span id="brandName">PDF Editor<small>Fill · Sign · Merge</small></span>
+  </div>
+
+  <div id="docBar">
+    <span id="fname" title="Current document">No file</span>
+  </div>
+
+  <div id="headActions">
+    <span id="privacy" title="Your files are never uploaded — all processing happens in this browser">
+      <svg class="ic sm" aria-hidden="true"><use href="#i-shield"/></svg> Private &amp; offline
+    </span>
+    <button id="bSave" class="primary" disabled title="Save the finished PDF to your computer">
+      <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg><span class="lbl">Save PDF</span>
+    </button>
+  </div>
+</header>
+
+<!-- ================================ toolbar =============================== -->
+<div id="bar" role="toolbar" aria-label="Editing tools">
+
+  <div class="tgrp" role="group" aria-label="File">
+    <button id="bOpen" class="tb tint" title="Open a PDF (replaces the current one)">
+      <svg class="ic" aria-hidden="true"><use href="#i-open"/></svg><span class="lbl">Open</span>
+    </button>
+    <button id="bAdd" class="tb" disabled title="Merge more PDFs into this document">
+      <svg class="ic" aria-hidden="true"><use href="#i-add"/></svg><span class="lbl">Add</span>
+    </button>
+    <button id="bClear" class="tb danger" disabled title="Close everything and start again">
+      <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="lbl">Clear</span>
+    </button>
+    <input type="file" id="fileIn" accept="application/pdf" multiple hidden>
+  </div>
 
   <span class="sep"></span>
-  <button id="bZoomOut" title="Zoom out">−</button>
-  <span id="zoomLabel">130%</span>
-  <button id="bZoomIn" title="Zoom in">+</button>
-  <button id="bFit">Fit width</button>
+
+  <div class="tgrp" role="group" aria-label="View">
+    <button id="bZoomOut" class="tb icon" title="Zoom out" aria-label="Zoom out">
+      <svg class="ic" aria-hidden="true"><use href="#i-zoomout"/></svg>
+    </button>
+    <span id="zoomLabel" aria-live="polite">130%</span>
+    <button id="bZoomIn" class="tb icon" title="Zoom in" aria-label="Zoom in">
+      <svg class="ic" aria-hidden="true"><use href="#i-zoomin"/></svg>
+    </button>
+    <button id="bFit" class="tb" title="Fit the page to the window width">
+      <svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg><span class="lbl">Fit width</span>
+    </button>
+  </div>
 
   <span class="sep"></span>
-  <button class="tool on" data-tool="select" title="Select / move (V)">Select</button>
-  <button class="tool" data-tool="text" title="Add text (T)">Text</button>
-  <button class="tool" data-tool="check" title="Add check mark">✔</button>
-  <button class="tool" data-tool="cross" title="Add cross">✘</button>
-  <button class="tool" data-tool="white" title="White-out: drag a box over content">White‑out</button>
-  <button id="bSign" title="Draw a signature">Signature</button>
-  <button id="bImage" title="Insert an image">Image</button>
-  <input type="file" id="imgIn" accept="image/png,image/jpeg" hidden>
+
+  <div class="tgrp" role="group" aria-label="Edit">
+    <button class="tool tb icon on" data-tool="select" title="Select and move items  (V)" aria-label="Select">
+      <svg class="ic" aria-hidden="true"><use href="#i-cursor"/></svg>
+    </button>
+    <button class="tool tb icon" data-tool="text" title="Add text  (T)" aria-label="Add text">
+      <svg class="ic" aria-hidden="true"><use href="#i-text"/></svg>
+    </button>
+    <button class="tool tb icon" data-tool="check" title="Add a check mark" aria-label="Add check mark">
+      <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>
+    </button>
+    <button class="tool tb icon" data-tool="cross" title="Add a cross" aria-label="Add cross">
+      <svg class="ic" aria-hidden="true"><use href="#i-cross"/></svg>
+    </button>
+    <button class="tool tb icon" data-tool="white" title="White-out — drag a box over content" aria-label="White-out">
+      <svg class="ic" aria-hidden="true"><use href="#i-erase"/></svg>
+    </button>
+    <button id="bSign" class="tb icon" title="Draw a signature" aria-label="Draw a signature">
+      <svg class="ic" aria-hidden="true"><use href="#i-sign"/></svg>
+    </button>
+    <button id="bImage" class="tb icon" title="Insert an image" aria-label="Insert an image">
+      <svg class="ic" aria-hidden="true"><use href="#i-image"/></svg>
+    </button>
+    <input type="file" id="imgIn" accept="image/png,image/jpeg" hidden>
+  </div>
 
   <span class="spacer"></span>
-  <label class="chk" title="Tint interactive form fields"><input type="checkbox" id="cHl" checked> Highlight fields</label>
-  <label class="chk" title="Bake values in so they can no longer be edited"><input type="checkbox" id="cFlat"> Flatten</label>
-  <button id="bSide">Panel</button>
-  <button id="bSave" class="primary" disabled>Save PDF</button>
+
+  <div class="tgrp" role="group" aria-label="Options">
+    <label class="tgl" title="Highlight fields — tint every interactive form field so none are missed">
+      <svg class="ic sm" aria-hidden="true"><use href="#i-eye"/></svg>
+      <input type="checkbox" id="cHl" checked>
+      <span class="sw"></span>
+      <span class="lbl-opt">Highlight fields</span>
+    </label>
+    <label class="tgl" title="Flatten — bake the values into the page so they can no longer be edited">
+      <svg class="ic sm" aria-hidden="true"><use href="#i-lock"/></svg>
+      <input type="checkbox" id="cFlat">
+      <span class="sw"></span>
+      <span class="lbl-opt">Flatten</span>
+    </label>
+    <button id="bSide" class="tb" title="Show or hide the side panel">
+      <svg class="ic" aria-hidden="true"><use href="#i-panel"/></svg><span class="lbl">Panel</span>
+    </button>
+  </div>
 </div>
 
-<div id="props">
+<!-- ============================ inspector strip =========================== -->
+<div id="props" role="region" aria-label="Selected item">
   <span id="pTitle">Selected</span>
   <span class="sep"></span>
   <label for="pSize">Size</label>
-  <input type="number" id="pSize" min="4" max="200" step="1" style="width:64px">
+  <input type="number" id="pSize" min="4" max="200" step="1">
   <label for="pColor">Colour</label>
-  <input type="color" id="pColor" value="#111111" style="width:40px;height:26px;padding:0;border:1px solid var(--line);border-radius:5px">
-  <button id="pFront">Bring to front</button>
-  <button id="pDel" style="color:var(--danger)">Delete</button>
+  <input type="color" id="pColor" value="#111111" aria-label="Item colour">
+  <button id="pFront" title="Move this item above the others">Bring to front</button>
+  <button id="pDel" style="color:var(--danger)" title="Delete this item">Delete</button>
   <span class="spacer"></span>
-  <span style="font-size:12px;color:var(--muted)">Drag to move · arrows nudge · Delete removes</span>
+  <span id="propsHint">Drag to move · arrow keys nudge · Delete removes</span>
 </div>
 
+<!-- ================================= body ================================= -->
 <div id="main">
-  <aside id="side" class="hide">
-    <div id="tabs">
-      <button data-pane="panePages" class="on">Pages</button>
-      <button data-pane="paneFields">Fields</button>
+  <aside id="side" class="hide" aria-label="Document panel">
+    <div id="tabs" role="tablist">
+      <button data-pane="panePages" class="on" role="tab">
+        <svg class="ic sm" aria-hidden="true"><use href="#i-pages"/></svg> Pages
+      </button>
+      <button data-pane="paneFields" role="tab">
+        <svg class="ic sm" aria-hidden="true"><use href="#i-fields"/></svg> Fields
+      </button>
     </div>
 
-    <div class="pane on" id="panePages">
+    <div class="pane on" id="panePages" role="tabpanel">
       <div id="pgTools">
-        <button id="bAdd2" class="mini">+ Add PDF</button>
-        <button id="bSelAll" class="mini">Select all</button>
-        <button id="bSelNone" class="mini">None</button>
-        <button id="bRotL" class="mini" title="Rotate selected left">⟲</button>
-        <button id="bRotR" class="mini" title="Rotate selected right">⟳</button>
-        <button id="bDelPg" class="mini" style="color:var(--danger)">Delete</button>
-        <button id="bExtract" class="mini" title="Save only the selected pages as a new PDF">Extract</button>
+        <button id="bAdd2" class="mini" title="Merge more PDFs into this document">
+          <svg class="ic sm" aria-hidden="true"><use href="#i-add"/></svg> Add PDF
+        </button>
+        <button id="bSelAll" class="mini" title="Select every page">
+          <svg class="ic sm" aria-hidden="true"><use href="#i-selall"/></svg> All
+        </button>
+        <button id="bSelNone" class="mini" title="Clear the selection">
+          <svg class="ic sm" aria-hidden="true"><use href="#i-selnone"/></svg> None
+        </button>
+        <button id="bRotL" class="mini" title="Rotate selected pages left" aria-label="Rotate left">
+          <svg class="ic sm" aria-hidden="true"><use href="#i-rotl"/></svg>
+        </button>
+        <button id="bRotR" class="mini" title="Rotate selected pages right" aria-label="Rotate right">
+          <svg class="ic sm" aria-hidden="true"><use href="#i-rotr"/></svg>
+        </button>
+        <button id="bDelPg" class="mini" style="color:var(--danger)" title="Delete selected pages">
+          <svg class="ic sm" aria-hidden="true"><use href="#i-trash"/></svg> Delete
+        </button>
+        <button id="bExtract" class="mini" title="Save only the selected pages as a new PDF">
+          <svg class="ic sm" aria-hidden="true"><use href="#i-extract"/></svg> Extract
+        </button>
       </div>
       <p class="hint" id="pgHint">No PDF loaded.</p>
       <div id="thumbs"></div>
     </div>
 
-    <div class="pane" id="paneFields">
+    <div class="pane" id="paneFields" role="tabpanel">
       <p class="hint" id="fieldHint">No PDF loaded.</p>
       <div id="fieldList"></div>
     </div>
@@ -225,14 +543,37 @@
 
   <div id="viewWrap">
     <div id="pages"></div>
+
     <div id="drop">
-      <b>Drop one or more PDFs here</b>
-      <span>or click “Open PDF”. Nothing is uploaded — it all runs in your browser.</span>
+      <div class="empty">
+        <div class="art"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg></div>
+        <h1>Drop a PDF to get started</h1>
+        <p>Fill in forms, sign, white‑out, merge several files and reorder pages.
+           Nothing is uploaded — every document stays on this computer.</p>
+        <span class="cta">
+          <button id="bOpenEmpty" class="primary">
+            <svg class="ic" aria-hidden="true"><use href="#i-open"/></svg> Choose a PDF
+          </button>
+        </span>
+        <div class="chips">
+          <span>Fill forms</span><span>Signature</span><span>White‑out</span>
+          <span>Merge</span><span>Reorder</span><span>Rotate</span><span>Split</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="dz">
+      <div class="box">
+        <svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>
+        <b>Drop to open</b>
+        <span>PDF files only</span>
+      </div>
     </div>
   </div>
 </div>
 
-<div class="modal" id="sigModal">
+<!-- ================================ modal ================================= -->
+<div class="modal" id="sigModal" role="dialog" aria-modal="true" aria-label="Draw your signature">
   <div class="card">
     <h2>Draw your signature</h2>
     <p>Use your mouse, trackpad or finger, then click Use — and click on the page to place it.</p>
@@ -245,8 +586,8 @@
   </div>
 </div>
 
-<div id="busy"><span id="busyMsg">Working…</span></div>
-<div id="toast"></div>
+<div id="busy" role="status" aria-live="polite"><span id="busyMsg">Working…</span></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 "use strict";
@@ -322,6 +663,7 @@ function hexToRgb(h) {
 
 /* ============================================================ OPEN / MERGE */
 $("#bOpen").onclick = () => { $("#fileIn").dataset.mode = "open"; $("#fileIn").click(); };
+$("#bOpenEmpty").onclick = () => $("#bOpen").click();
 $("#bAdd").onclick = $("#bAdd2").onclick = () => { $("#fileIn").dataset.mode = "add"; $("#fileIn").click(); };
 $("#fileIn").onchange = e => {
   const files = [...e.target.files];
